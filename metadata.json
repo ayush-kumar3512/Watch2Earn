@@ -1,0 +1,6 @@
+{
+  "name": "Watch2Earn",
+  "description": "Unity Ads production suite and live telemetry monitor with persistent DataStore metrics and real network geolocation",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
