@@ -46,9 +46,6 @@ class UnityAdsManager(
     private val statsRepository: AdStatsRepository,
     private val scope: CoroutineScope
 ) {
-    private val _adConfig = MutableStateFlow(UnityAdConfig())
-    val adConfig: StateFlow<UnityAdConfig> = _adConfig.asStateFlow()
-
     private val _sdkStatus = MutableStateFlow(SdkStatus.NOT_INITIALIZED)
     val sdkStatus: StateFlow<SdkStatus> = _sdkStatus.asStateFlow()
 
@@ -60,9 +57,6 @@ class UnityAdsManager(
 
     private val _rawLastError = MutableStateFlow<String?>(null)
     val rawLastError: StateFlow<String?> = _rawLastError.asStateFlow()
-
-    private val _isPlacementNotFound = MutableStateFlow(false)
-    val isPlacementNotFound: StateFlow<Boolean> = _isPlacementNotFound.asStateFlow()
 
     private val _userMessages = MutableSharedFlow<AdUserMessage>(extraBufferCapacity = 16)
     val userMessages: SharedFlow<AdUserMessage> = _userMessages.asSharedFlow()
@@ -81,39 +75,22 @@ class UnityAdsManager(
 
     private var currentActivityRef: WeakReference<Activity>? = null
 
-    init {
-        scope.launch {
-            statsRepository.configFlow.collect { config ->
-                val prev = _adConfig.value
-                _adConfig.value = config
-                if (prev != config && _sdkStatus.value == SdkStatus.INITIALIZED) {
-                    if (prev.gameId != config.gameId || prev.testMode != config.testMode) {
-                        initialize(currentActivityRef?.get(), force = true)
-                    } else {
-                        reloadAllAds()
-                    }
-                }
-            }
-        }
-    }
-
-    fun initialize(activity: Activity? = null, force: Boolean = false) {
+    fun initialize(activity: Activity? = null) {
         if (activity != null) {
             currentActivityRef = WeakReference(activity)
         }
-        if (!force && (_sdkStatus.value == SdkStatus.INITIALIZING || _sdkStatus.value == SdkStatus.INITIALIZED)) {
+        if (_sdkStatus.value == SdkStatus.INITIALIZING || _sdkStatus.value == SdkStatus.INITIALIZED) {
             return
         }
 
         _sdkStatus.value = SdkStatus.INITIALIZING
         _rawLastError.value = null
-        _isPlacementNotFound.value = false
 
-        val config = _adConfig.value
+        // Using private constants directly for privacy
         UnityAds.initialize(
             context.applicationContext,
-            config.gameId,
-            config.testMode,
+            Constants.UNITY_GAME_ID,
+            Constants.TEST_MODE,
             object : IUnityAdsInitializationListener {
                 override fun onInitializationComplete() {
                     scope.launch(Dispatchers.Main) {
@@ -129,9 +106,9 @@ class UnityAdsManager(
                 ) {
                     scope.launch(Dispatchers.Main) {
                         _sdkStatus.value = SdkStatus.INITIALIZATION_FAILED
-                        val rawError = "InitializationError: ${error.name} - $message"
+                        val rawError = "InitializationError: ${error.name}"
                         _rawLastError.value = rawError
-                        _userMessages.emit(AdUserMessage.Warning("Init failed: $message"))
+                        _userMessages.emit(AdUserMessage.Warning("Init failed. Please check connection."))
                     }
                 }
             }
@@ -145,15 +122,13 @@ class UnityAdsManager(
         retryRewardedJob?.cancel()
         _rewardedState.value = AdPlacementState.LOADING
 
-        val placementId = _adConfig.value.rewardedPlacementId
         UnityAds.load(
-            placementId,
+            Constants.REWARDED_PLACEMENT_ID,
             object : IUnityAdsLoadListener {
                 override fun onUnityAdsAdLoaded(placement: String) {
                     scope.launch(Dispatchers.Main) {
                         _rewardedState.value = AdPlacementState.READY
                         statsRepository.recordLoadSuccess()
-                        _isPlacementNotFound.value = false
 
                         if (_isPendingRewarded.value) {
                             pendingRewardedJob?.cancel()
@@ -174,10 +149,7 @@ class UnityAdsManager(
                     scope.launch(Dispatchers.Main) {
                         _rewardedState.value = AdPlacementState.FAILED
                         statsRepository.recordLoadFailed()
-                        _rawLastError.value = "LoadError [$placement]: ${error.name} - $message"
-                        if (message.contains("Placement not found", ignoreCase = true)) {
-                            _isPlacementNotFound.value = true
-                        }
+                        _rawLastError.value = "LoadError: ${error.name}"
                         scheduleRetry(placement, isRewarded = true)
                     }
                 }
@@ -192,15 +164,13 @@ class UnityAdsManager(
         retryInterstitialJob?.cancel()
         _interstitialState.value = AdPlacementState.LOADING
 
-        val placementId = _adConfig.value.interstitialPlacementId
         UnityAds.load(
-            placementId,
+            Constants.INTERSTITIAL_PLACEMENT_ID,
             object : IUnityAdsLoadListener {
                 override fun onUnityAdsAdLoaded(placement: String) {
                     scope.launch(Dispatchers.Main) {
                         _interstitialState.value = AdPlacementState.READY
                         statsRepository.recordLoadSuccess()
-                        _isPlacementNotFound.value = false
 
                         if (_isPendingInterstitial.value) {
                             pendingInterstitialJob?.cancel()
@@ -221,10 +191,7 @@ class UnityAdsManager(
                     scope.launch(Dispatchers.Main) {
                         _interstitialState.value = AdPlacementState.FAILED
                         statsRepository.recordLoadFailed()
-                        _rawLastError.value = "LoadError [$placement]: ${error.name} - $message"
-                        if (message.contains("Placement not found", ignoreCase = true)) {
-                            _isPlacementNotFound.value = true
-                        }
+                        _rawLastError.value = "LoadError: ${error.name}"
                         scheduleRetry(placement, isRewarded = false)
                     }
                 }
@@ -279,10 +246,9 @@ class UnityAdsManager(
     private fun showRewardedAdInternal(activity: Activity) {
         _rewardedState.value = AdPlacementState.SHOWING
 
-        val placementId = _adConfig.value.rewardedPlacementId
         UnityAds.show(
             activity,
-            placementId,
+            Constants.REWARDED_PLACEMENT_ID,
             UnityAdsShowOptions(),
             object : IUnityAdsShowListener {
                 override fun onUnityAdsShowClick(placement: String) {
@@ -298,7 +264,6 @@ class UnityAdsManager(
                     scope.launch(Dispatchers.Main) {
                         _rewardedState.value = AdPlacementState.IDLE
                         if (state == UnityAds.UnityAdsShowCompletionState.COMPLETED) {
-                            statsRepository.recordRewardedWatched()
                             statsRepository.addCoins(Constants.REWARD_COINS_PER_AD)
                             _userMessages.emit(
                                 AdUserMessage.RewardSuccess(
@@ -321,13 +286,18 @@ class UnityAdsManager(
                 ) {
                     scope.launch(Dispatchers.Main) {
                         _rewardedState.value = AdPlacementState.IDLE
-                        _rawLastError.value = "ShowError [$placement]: ${error.name} - $message"
-                        _userMessages.emit(AdUserMessage.Warning("Ad display failed: $message"))
+                        _rawLastError.value = "ShowError: ${error.name}"
+                        _userMessages.emit(AdUserMessage.Warning("Ad display failed. Please try again."))
                         loadRewardedAd()
                     }
                 }
 
-                override fun onUnityAdsShowStart(placement: String) {}
+                override fun onUnityAdsShowStart(placement: String) {
+                    scope.launch(Dispatchers.Main) {
+                        // Counting impression on start makes estimated earnings more accurate
+                        statsRepository.recordRewardedWatched()
+                    }
+                }
             }
         )
     }
@@ -335,10 +305,9 @@ class UnityAdsManager(
     private fun showInterstitialAdInternal(activity: Activity) {
         _interstitialState.value = AdPlacementState.SHOWING
 
-        val placementId = _adConfig.value.interstitialPlacementId
         UnityAds.show(
             activity,
-            placementId,
+            Constants.INTERSTITIAL_PLACEMENT_ID,
             UnityAdsShowOptions(),
             object : IUnityAdsShowListener {
                 override fun onUnityAdsShowClick(placement: String) {
@@ -353,9 +322,7 @@ class UnityAdsManager(
                 ) {
                     scope.launch(Dispatchers.Main) {
                         _interstitialState.value = AdPlacementState.IDLE
-                        if (state == UnityAds.UnityAdsShowCompletionState.COMPLETED) {
-                            statsRepository.recordInterstitialShown()
-                        } else {
+                        if (state != UnityAds.UnityAdsShowCompletionState.COMPLETED) {
                             statsRepository.recordAdSkipped()
                         }
                         loadInterstitialAd()
@@ -369,13 +336,18 @@ class UnityAdsManager(
                 ) {
                     scope.launch(Dispatchers.Main) {
                         _interstitialState.value = AdPlacementState.IDLE
-                        _rawLastError.value = "ShowError [$placement]: ${error.name} - $message"
-                        _userMessages.emit(AdUserMessage.Warning("Interstitial failed: $message"))
+                        _rawLastError.value = "ShowError: ${error.name}"
+                        _userMessages.emit(AdUserMessage.Warning("Interstitial failed. Please try again."))
                         loadInterstitialAd()
                     }
                 }
 
-                override fun onUnityAdsShowStart(placement: String) {}
+                override fun onUnityAdsShowStart(placement: String) {
+                    scope.launch(Dispatchers.Main) {
+                        // Counting impression on start for more accurate earnings
+                        statsRepository.recordInterstitialShown()
+                    }
+                }
             }
         )
     }
@@ -398,7 +370,6 @@ class UnityAdsManager(
 
     fun reloadAllAds() {
         _rawLastError.value = null
-        _isPlacementNotFound.value = false
         loadRewardedAd()
         loadInterstitialAd()
     }

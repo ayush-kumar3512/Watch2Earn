@@ -26,14 +26,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val adStats: StateFlow<AdStats> = statsRepository.statsFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), AdStats())
 
-    val adConfig: StateFlow<UnityAdConfig> = adsManager.adConfig
     val sdkStatus: StateFlow<SdkStatus> = adsManager.sdkStatus
     val rewardedState: StateFlow<AdPlacementState> = adsManager.rewardedState
     val interstitialState: StateFlow<AdPlacementState> = adsManager.interstitialState
     val isPendingRewarded: StateFlow<Boolean> = adsManager.isPendingRewarded
     val isPendingInterstitial: StateFlow<Boolean> = adsManager.isPendingInterstitial
     val rawLastError: StateFlow<String?> = adsManager.rawLastError
-    val isPlacementNotFound: StateFlow<Boolean> = adsManager.isPlacementNotFound
     val userMessages: SharedFlow<AdUserMessage> = adsManager.userMessages
 
     private val _locationState = MutableStateFlow<NetworkLocationState>(NetworkLocationState.Idle)
@@ -44,9 +42,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _showResetDialog = MutableStateFlow(false)
     val showResetDialog: StateFlow<Boolean> = _showResetDialog.asStateFlow()
-
-    private val _showConfigDialog = MutableStateFlow(false)
-    val showConfigDialog: StateFlow<Boolean> = _showConfigDialog.asStateFlow()
 
     private val _showCoinBurst = MutableStateFlow(false)
     val showCoinBurst: StateFlow<Boolean> = _showCoinBurst.asStateFlow()
@@ -119,42 +114,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             statsRepository.resetAllStats()
         }
-    }
-
-    fun openConfigDialog() {
-        _showConfigDialog.value = true
-    }
-
-    fun dismissConfigDialog() {
-        _showConfigDialog.value = false
-    }
-
-    fun saveConfig(
-        gameId: String,
-        rewardedPlacementId: String,
-        interstitialPlacementId: String,
-        testMode: Boolean
-    ) {
-        _showConfigDialog.value = false
-        _hapticTrigger.tryEmit(HapticType.LIGHT)
-        viewModelScope.launch {
-            statsRepository.updateAdConfig(
-                gameId = gameId,
-                rewardedPlacementId = rewardedPlacementId,
-                interstitialPlacementId = interstitialPlacementId,
-                testMode = testMode
-            )
-        }
-    }
-
-    fun switchPlacementPreset(rewardedId: String, interstitialId: String) {
-        val current = adConfig.value
-        saveConfig(
-            gameId = current.gameId,
-            rewardedPlacementId = rewardedId,
-            interstitialPlacementId = interstitialId,
-            testMode = current.testMode
-        )
     }
 
     private fun observeAdsMessages() {

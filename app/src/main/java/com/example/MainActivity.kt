@@ -53,7 +53,6 @@ import com.example.ui.components.CoinBurstOverlay
 import com.example.ui.components.DeviceSessionCard
 import com.example.ui.components.HeaderSection
 import com.example.ui.components.NetworkLocationCard
-import com.example.ui.components.PlacementConfigDialog
 import com.example.ui.components.ResetStatsDialog
 import com.example.ui.theme.BgCosmicDark
 import com.example.ui.theme.BgDeepPurple
@@ -93,18 +92,15 @@ fun MainAppScreen(
     }
 
     val adStats by viewModel.adStats.collectAsStateWithLifecycle()
-    val adConfig by viewModel.adConfig.collectAsStateWithLifecycle()
     val sdkStatus by viewModel.sdkStatus.collectAsStateWithLifecycle()
     val rewardedState by viewModel.rewardedState.collectAsStateWithLifecycle()
     val interstitialState by viewModel.interstitialState.collectAsStateWithLifecycle()
     val isPendingRewarded by viewModel.isPendingRewarded.collectAsStateWithLifecycle()
     val isPendingInterstitial by viewModel.isPendingInterstitial.collectAsStateWithLifecycle()
     val rawLastError by viewModel.rawLastError.collectAsStateWithLifecycle()
-    val isPlacementNotFound by viewModel.isPlacementNotFound.collectAsStateWithLifecycle()
     val locationState by viewModel.locationState.collectAsStateWithLifecycle()
     val sessionSeconds by viewModel.sessionSeconds.collectAsStateWithLifecycle()
     val showResetDialog by viewModel.showResetDialog.collectAsStateWithLifecycle()
-    val showConfigDialog by viewModel.showConfigDialog.collectAsStateWithLifecycle()
     val showCoinBurst by viewModel.showCoinBurst.collectAsStateWithLifecycle()
 
     // Initialize Unity Ads with Activity reference on launch
@@ -218,12 +214,8 @@ fun MainAppScreen(
                     sdkStatus = sdkStatus,
                     rewardedState = rewardedState,
                     interstitialState = interstitialState,
-                    adConfig = adConfig,
                     rawLastError = rawLastError,
-                    isPlacementNotFound = isPlacementNotFound,
-                    onReloadAds = { viewModel.onReloadAdsClicked() },
-                    onOpenConfig = { viewModel.openConfigDialog() },
-                    onSwitchToDefaultPlacements = { viewModel.switchPlacementPreset("BP_Rewarded_Android", "BP_Interstitial_Android") }
+                    onReloadAds = { viewModel.onReloadAdsClicked() }
                 )
 
                 AdPerformanceCard(stats = adStats)
@@ -274,17 +266,6 @@ fun MainAppScreen(
                 ResetStatsDialog(
                     onConfirm = { viewModel.confirmResetStats() },
                     onDismiss = { viewModel.dismissResetDialog() }
-                )
-            }
-
-            // Placement / Settings Modal
-            if (showConfigDialog) {
-                PlacementConfigDialog(
-                    currentConfig = adConfig,
-                    onSave = { gameId, rewardedId, interstitialId, testMode ->
-                        viewModel.saveConfig(gameId, rewardedId, interstitialId, testMode)
-                    },
-                    onDismiss = { viewModel.dismissConfigDialog() }
                 )
             }
         }

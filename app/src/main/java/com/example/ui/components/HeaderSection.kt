@@ -94,7 +94,6 @@ fun HeaderSection(
 
         Spacer(modifier = Modifier.height(10.dp))
 
-        // Production Mode Banner Pill
         Box(
             modifier = Modifier
                 .clip(RoundedCornerShape(12.dp))
@@ -103,7 +102,7 @@ fun HeaderSection(
                 .padding(horizontal = 12.dp, vertical = 4.dp)
         ) {
             Text(
-                text = "● LIVE PRODUCTION ENGINE  •  ID: ${Constants.UNITY_GAME_ID}",
+                text = "● LIVE PRODUCTION ENGINE",
                 style = MaterialTheme.typography.labelSmall.copy(
                     fontWeight = FontWeight.SemiBold,
                     letterSpacing = 0.8.sp
